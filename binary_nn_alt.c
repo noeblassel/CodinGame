@@ -4,154 +4,303 @@
 #include <stdbool.h>
 #include <math.h>
 
-#define log(args,...) fprintf(stderr,args)
-/*THIS PROGRAM IMPLEMENTS A SIMPLE FEEDFORWARD MULTI-LAYERED NEURAL NETWORK ARCHITECTURE
-THE NON LINEARITY IS SIGMOID, AND THE LOSS IS SQUARED ERROR.
-NETWORK PARAMETERS ARE UPDATED USING SIMPLE ONLINE GRADIENT DESCENT.*/
-/*==================DATA STRUCTURES==================================*/
-        typedef double real;//SIMPLE TOGGLE BETWEEN DOUBLE OR FLOAT PRECISION FOR REAL NUMBERS
+#define log(args...) fprintf(stderr, args)
 
-        typedef struct{
-            real activation;
-            real delta;//DERIVATIVE OF LOSS WITH RESPECT TO THE PRE-ACTIVATION VALUE (INFERED USING THE CHAIN RULE AND THE ACTIVATION VALUE)
-        }Neuron;
+typedef double real;
 
-        typedef struct{
-            int dim;//NUMBER OF NEURONS IN LAYER
-            Layer* prev;//POINTER TO PREVIOUS LAYER IN NETWORK (NULL if input layer)
-            Layer* next;//POINTER TO NEXT LAYER (NULL if output layer)
-            Neuron* units;//POINTER TO FIRST NEURON IN LAYER
+typedef struct neuron_t
+{
+    real activation;
+    real delta;
+} Neuron;
 
-            real** weights;//MATRIX OF CONNECTION WEIGHTS BETWEEN PREVIOUS AND CURRENT LAYER
-            real* bias;//VECTOR OF BIASES (CONNECTIONS WEIGHTS BETWEEN BIAS NEURON AND CURRENT LAYER)
+typedef struct layer_t
+{
+    int dim;
+    struct layer_t *prev;
+    struct layer_t *next;
+    Neuron *units;
 
-            real** weights_grad;//GRADIENT OF LOSS W.R.T. CONNECTION WEIGHTS (same shape as weights)
-            real* bias_grad;//GRADIENT OF LOSS W.R.T. BIASES
-        }Layer;
+    real **weights;
+    real *bias;
 
-        typedef struct{
-            int n_layers;//NUMBER OF LAYERS
-            int* layer_dims;
-            Layer* layers;//POINTER TO THE FIRST LAYER
-        }MultiLayerPerceptron;
+    real **weights_grad;
+    real *bias_grad;
+} Layer;
 
+typedef struct mlp_t
+{
+    int n_layers;
+    int *layer_dims;
+    Layer *layers;
+} MultiLayerPerceptron;
 
-/*======================================================================*/
+real eta = .5;
+long r_state = 1103527590;
 
-/*====================GLOBAL VARIABLES==============================*/
-real eta=.5;//LEARNING RATE
-long r_state=1103527590;//INITIAL RANDOM SEED
-
-int dim_in,dim_out,n_hidden_layers;
-int*dims;
+int dim_in, dim_out, n_hidden_layers;
+int *dims;
 
 int n_epochs;
-int n_training_examples,n_test_inputs;
-char** testing_inputs;
-char*** training_examples;//TRAINING (X,Y) PAIRS
+int n_training_pairs, n_test_inputs;
+char **test_inputs;
+char ***training_pairs;
 
 MultiLayerPerceptron net;
 
-/*===========================================   =======================*/
+long lcg();
+real randf(real min, real max);
+real sigmoid(real l);
 
-/*=========================ALGO & UTILITY FUNCTIONS PROTOTYPES==============================*/
-long lcg();//PSEUDORANDOM NUMBER GENERATOR
-real randf(real min,real max);//FLOATING POINT RANDOM GENERATION (CALLS LCG())
-real sigmoid(real l);//SIGMOID FUNCTION (numerically stable version)
+void setup();
+void initialize_weights();
 
-void setup();//PARSES INPUT AND INITIALIZES THE NETWORK (MEMORY ALLOCATION HANDLED HERE)
-void initialize_weights();//RANDOMLY INITIALIZES THE WEIGHTS OF THE NETWORK
+void forward(char *input);
+void backward(char *input, char *output, bool recompute_activations);
 
-void forward(char* input);//FEED AN INPUT THROUGH THE NETWORK. ACTIVATIONS ARE STORED IN INDIVIDUAL NEURONS
-void backward(char* input,char* output,bool recompute_activations);//PERFORMS BACKWARD PASS (COMPUTING DELTAS)
-void compute_gradient(char* input,char* expected_output);//COMPUTES PARAMETER GRADIENTS
+void gradient_step();
+void predict(char *input);
+void cleanup();
 
-void gradient_step();//UPDATES THE WEIGHTS OF NETWORK (FOR NOW JUST VANILLA GRADIENT DESCENT)
-void predict(char* input);//FORWARDS INPUT THROUGH THE NETWORK AND OUTPUTS(PRINTS) A PREDICTION
-void cleanup();//PERFORMS MEMORY LIBERATION
-/*=================================================*/
-
-int main(){
+int main()
+{
 
     setup();
     initialize_weights();
+    forward(test_inputs[1]);
 
-    for(int i=0;i<n_epochs;++i){
-        for(int j=0;j<n_training_examples;++j){
-            backward(training_examples[j][0],training_examples[j][1],true);
-            compute_gradient(training_examples[j][0],training_examples[j][1]);
+    for (int i = 0; i < n_epochs; ++i)
+    {
+        for (int j = 0; j < n_training_pairs; ++j)
+        {
+            backward(training_pairs[j][0], training_pairs[j][1], true);
             gradient_step();
         }
     }
+    for (int i = 0; i < n_test_inputs; i++)
+    {
+        predict(test_inputs[i]);
+    }
+    cleanup();
     return 0;
 }
 
-/*==================FUNCTION DEFINITIONS===============*/
-/*=================NUMERIC========================*/
-long lcg(){
-    r_state=(0x41c64e6d*r_state+0x3039)%0x80000000;
+long lcg()
+{
+    r_state = (0x41c64e6d * r_state + 0x3039) % 0x80000000;
     return r_state;
 }
-real randf(real min,real max){
-    return min+(max-min)*(((real)lcg())/0x7fffffff);
+real randf(real min, real max)
+{
+    return min + (max - min) * (((real)lcg()) / 0x7fffffff);
 }
-real sigmoid(real x){//only deal with [0,1] floating points to avoid overflow errors
-    if(x>0){
-        return 1./(1+(real)exp(-x));
+real sigmoid(real x)
+{
+    if (x > 0)
+    {
+        return 1. / (1 + (real)exp(-x));
     }
-    else{
-        real s=(real)exp(x);
-        return s/(1+s);
+    else
+    {
+        real s = (real)exp(x);
+        return s / (1 + s);
     }
 }
+void setup()
+{
+    scanf("%d%d%d%d%d%d", &dim_in, &dim_out, &n_hidden_layers, &n_test_inputs, &n_training_pairs, &n_epochs);
 
-/*=================MEMORY HANDLING AND INPUT PARSING========================*/
-    void setup(){
-        scanf("%d%d%d%d%d%d",&dim_in,&dim_out,&n_hidden_layers,&n_test_inputs,&n_training_examples,&n_epochs);
+    net.n_layers = 2 + n_hidden_layers;
+    net.layers = (Layer *)malloc(net.n_layers * sizeof(Layer));
+    net.layer_dims = (int *)malloc((2 + n_hidden_layers) * sizeof(int));
+    net.layer_dims[0] = dim_in;
+    net.layer_dims[1 + n_hidden_layers] = dim_out;
 
-        net.n_layers=2+n_hidden_layers;
-        net.layers=(Layer*)malloc(net.n_layers*sizeof(Layer));
-        net.layer_dims=(int*)malloc((2+n_hidden_layers)*sizeof(int));
+    for (int i = 1; i <= n_hidden_layers; ++i)
+    {
+        scanf("%d", net.layer_dims + i);
+    }
 
-        net.layer_dims[0]=dim_in;
-        net.layer_dims[1+n_hidden_layers]=dim_out;
+    test_inputs = (char **)malloc(n_test_inputs * sizeof(char *));
+    training_pairs = (char ***)malloc(n_training_pairs * sizeof(char **));
+    for (int i = 0; i < n_test_inputs; i++)
+    {
+        test_inputs[i] = (char *)malloc(dim_in * sizeof(char));
+        scanf("%s", test_inputs[i]);
+    }
 
-        for(int i=1;i<=n_hidden_layers;++i){
-            scanf("%d",net.layer_dims+i);
-        }
+    for (int i = 0; i < n_training_pairs; ++i)
+    {
+        training_pairs[i] = (char **)malloc(2 * sizeof(char *));
+        training_pairs[i][0] = (char *)malloc(dim_in * sizeof(char));
+        training_pairs[i][1] = (char *)malloc(dim_out * sizeof(char));
+        scanf("%s%s", training_pairs[i][0], training_pairs[i][1]);
+    }
 
-        testing_inputs=(char**)malloc(n_test_inputs*sizeof(char*));
-        training_examples=(char***)malloc(n_training_examples*sizeof(char**));
+    for (int i = 0; i < net.n_layers; ++i)
+    {
+        net.layers[i].units = (Neuron *)malloc(net.layer_dims[i] * sizeof(Neuron));
+        if (i > 0)
+        {
+            net.layers[i].prev = net.layers + i - 1;
+            net.layers[i].weights = (real **)malloc(net.layer_dims[i - 1] * sizeof(real *));
+            net.layers[i].weights_grad = (real **)malloc(net.layer_dims[i - 1] * sizeof(real *));
 
-        for(int i=0;i<n_test_inputs;i++){
-            testing_inputs[i]=(char*)malloc(dim_in*sizeof(char));
-            scanf("%s",testing_inputs[i]);
-        }
-
-        for(int i=0;i<n_training_examples;++i){
-            training_examples[i]=(char**)malloc(2*sizeof(char*));
-            training_examples[i][0]=(char*)malloc(dim_in*sizeof(char));
-            training_examples[i][1]=(char*)malloc(dim_out*sizeof(char));
-            scanf("%s%s",training_examples[i][0],training_examples[i][1]);
-        }
-
-        for(int i=0;i<net.n_layers;++i){
-            net.layers[i].units=(Neuron*)malloc(net.layer_dims[i]*sizeof(Neuron));
-            if(i>0){
-                net.layers[i].prev=net.layers+i-1;
-                net.layers[i].weights=(real**)malloc(net.layer_dims[i-1]*sizeof(real*));
-                net.layers[i].weights_grad=(real**)malloc(net.layer_dims[i-1]*sizeof(real*));
-
-                for(int j=0;j<net.layer_dims[i-1];j++){
-                    net.layers[i].weights[j]=(real*)malloc(net.layer_dims[i]*sizeof(real));
-                    net.layers[i].weights_grad[j]=(real*)malloc(net.layer_dims[i]*sizeof(real));
-
-                }
-
-                net.layers[i].bias=(real*)malloc(net.layer_dims[i]*sizeof(real));
-                net.layers[i].bias_grad=(real*)malloc(net.layer_dims[i]*sizeof(real));
-
+            for (int j = 0; j < net.layer_dims[i - 1]; j++)
+            {
+                net.layers[i].weights[j] = (real *)malloc(net.layer_dims[i] * sizeof(real));
+                net.layers[i].weights_grad[j] = (real *)malloc(net.layer_dims[i] * sizeof(real));
             }
-            if(i<net.n_layers-1)net.layers[i].next=net.layers+i+1;
-        } 
+
+            net.layers[i].bias = (real *)malloc(net.layer_dims[i] * sizeof(real));
+            net.layers[i].bias_grad = (real *)malloc(net.layer_dims[i] * sizeof(real));
+        }
+        if (i < net.n_layers - 1)
+            net.layers[i].next = net.layers + i + 1;
     }
+}
+
+void cleanup()
+{
+    for (int i = 1; i < net.n_layers; ++i)
+    {
+        for (int j = 0; j < net.layer_dims[i - 1]; j++)
+        {
+            free(net.layers[i].weights[j]);
+            free(net.layers[i].weights_grad[j]);
+        }
+        free(net.layers[i].weights);
+        free(net.layers[i].weights_grad);
+
+        free(net.layers[i].bias);
+        free(net.layers[i].bias_grad);
+
+        free(net.layers[i].units);
+    }
+
+    free(net.layers[0].units);
+    free(net.layers);
+
+    for (int i = 0; i < n_training_pairs; i++)
+    {
+        free(training_pairs[i][0]);
+        free(training_pairs[i][1]);
+        free(training_pairs[i]);
+    }
+    free(training_pairs);
+
+    for (int i = 0; i < n_test_inputs; i++)
+    {
+        free(test_inputs[i]);
+    }
+
+    free(test_inputs);
+}
+
+void initialize_weights()
+{
+    for (int i = 1; i < net.n_layers; ++i)
+    {
+        real alpha = (real)sqrt(3. / ((real)net.layer_dims[i - 1]));
+        for (int k = 0; k < net.layer_dims[i]; k++)
+        {
+            for (int j = 0; j < net.layer_dims[i - 1]; j++)
+            {
+                net.layers[i].weights[j][k] = randf(-alpha, alpha);
+            }
+            net.layers[i].bias[k] = 0;
+        }
+    }
+}
+
+void forward(char *input)
+{
+    for (int k = 0; k < net.layer_dims[0]; k++)
+    {
+        net.layers[0].units[k].activation = (real)(input[k] - '0');
+    }
+    for (int i = 1; i < net.n_layers; ++i)
+    {
+        for (int k = 0; k < net.layer_dims[i]; k++)
+        {
+            real l = 0;
+            for (int j = 0; j < net.layer_dims[i - 1]; j++)
+            {
+                l += (net.layers[i].weights[j][k]) * (net.layers[i - 1].units[j].activation);
+            }
+            l += net.layers[i].bias[k];
+            net.layers[i].units[k].activation = sigmoid(l);
+        }
+    }
+}
+
+void backward(char *input, char *output, bool recompute_activations)
+{
+    if (recompute_activations)
+        forward(input);
+    for (int k = 0; k < net.layer_dims[net.n_layers - 1]; ++k)
+    {
+        real h = net.layers[net.n_layers - 1].units[k].activation;
+        net.layers[net.n_layers - 1].units[k].delta = h * (1 - h) * (h - (real)(output[k] - '0'));
+    }
+
+    for (int i = net.n_layers - 2; i > 0; i--)
+    {
+        for (int j = 0; j < net.layer_dims[i]; j++)
+        {
+            real _delta = 0;
+            for (int k = 0; k < net.layer_dims[i + 1]; k++)
+            {
+                _delta += (net.layers[i + 1].units[k].delta) * (net.layers[i + 1].weights[j][k]);
+            }
+            real h = net.layers[i].units[j].activation;
+            _delta *= (h) * (1 - h);
+            net.layers[i].units[j].delta = _delta;
+        }
+    }
+
+    for (int i = net.n_layers - 1; i > 0; i--)
+    {
+        for (int j = 0; j < net.layer_dims[i - 1]; j++)
+        {
+            for (int k = 0; k < net.layer_dims[i]; k++)
+            {
+                net.layers[i].weights_grad[j][k] = (net.layers[i - 1].units[j].activation) * (net.layers[i].units[k].delta);
+            }
+        }
+
+        for (int k = 0; k < net.layer_dims[i]; k++)
+        {
+            net.layers[i].bias_grad[k] = net.layers[i].units[k].delta;
+        }
+    }
+}
+
+void gradient_step()
+{
+    for (int i = 1; i < net.n_layers; i++)
+    {
+        for (int j = 0; j < net.layer_dims[i - 1]; j++)
+        {
+            for (int k = 0; k < net.layer_dims[i]; k++)
+            {
+                net.layers[i].weights[j][k] -= eta * net.layers[i].weights_grad[j][k];
+            }
+        }
+
+        for (int k = 0; k < net.layer_dims[i]; k++)
+        {
+            net.layers[i].bias[k] -= eta * net.layers[i].bias_grad[k];
+        }
+    }
+}
+
+void predict(char *input)
+{
+    forward(input);
+    for (int i = 0; i < net.layer_dims[net.n_layers - 1]; ++i)
+    {
+        printf("%d", (net.layers[net.n_layers - 1].units[i].activation > .5) ? 1 : 0);
+    }
+    printf("\n");
+}
