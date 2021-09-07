@@ -67,7 +67,6 @@ int main()
 
     setup();
     initialize_weights();
-    forward(test_inputs[1]);
 
     for (int i = 0; i < n_epochs; ++i)
     {
