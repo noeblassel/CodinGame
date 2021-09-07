@@ -1,12 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
 #include <math.h>
 
 #define log(args...) fprintf(stderr, args)
+#define true 1
+#define false 0
 
 typedef double real;
+typedef char bool;
+
 
 typedef struct neuron_t
 {
