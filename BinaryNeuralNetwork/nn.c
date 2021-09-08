@@ -13,15 +13,16 @@ typedef unsigned char byte;
 #define RELU 1
 #define TANH 2
 #define LINEAR 3
+#define LK_RELU 4
 
 typedef struct neuron_t
-{   
+{
     float weighted_input_value;
     float activation_value;
     float delta;
 } Neuron;
 
-typedef float (*neural_function_t)(Neuron*);
+typedef float (*neural_function_t)(Neuron *);
 
 typedef struct layer_t
 {
@@ -40,14 +41,14 @@ typedef struct layer_t
     neural_function_t dactivation;
 } Layer;
 
-typedef float (*loss_function_t)(Layer*,float*);
+typedef float (*loss_function_t)(Layer *, float *);
 
 typedef struct mlp_t
 {
     int n_layers;
     int *layer_dims;
     Layer *layers;
-    int* activation_types;
+    int *activation_types;
 } MultiLayerPerceptron;
 
 float eta = .5;
@@ -70,16 +71,16 @@ static byte z85_decoding_table[93] = { //z85_charset has ascii codes between 33 
 long lcg();
 float randf(float min, float max);
 
-float sigmoid(Neuron* unit);
+float sigmoid(Neuron *unit);
 float dsigmoid(Neuron *unit);
-float relu(Neuron* unit);
-float drelu(Neuron* unit);
-float tanh_neural(Neuron* unit);
-float dtanh_neural(Neuron* unit);
-float id(Neuron* unit);
-float did(Neuron* unit);
+float relu(Neuron *unit);
+float drelu(Neuron *unit);
+float tanh_neural(Neuron *unit);
+float dtanh_neural(Neuron *unit);
+float id(Neuron *unit);
+float did(Neuron *unit);
 
-void setup(MultiLayerPerceptron *net, int n_layers, int *layer_dimensions,int* activation_types);
+void setup(MultiLayerPerceptron *net, int n_layers, int *layer_dimensions, int *activation_types);
 void initialize_weights(MultiLayerPerceptron *net);
 
 void forward(MultiLayerPerceptron *net, float *input);
@@ -88,67 +89,28 @@ void backward(MultiLayerPerceptron *net, float *input, float *output, bool recom
 void gradient_step(MultiLayerPerceptron *net);
 void predict(MultiLayerPerceptron *net, float *input);
 
-
-void load_from_z85(MultiLayerPerceptron *net, char *z85_string);
-char* write_to_z85(MultiLayerPerceptron *net);
+void read_from_z85(MultiLayerPerceptron *net, char *z85_string);
+char *write_to_z85(MultiLayerPerceptron *net);
 void save_to_file(MultiLayerPerceptron *net, char *filename);
 void load_from_file(MultiLayerPerceptron *net, char *filename);
 
-neural_function_t activation_derivative(neural_function_t function);
-loss_function_t loss_derivative(loss_function_t function);
-
 void cleanup(MultiLayerPerceptron *net);
-char *z85_encode(byte *src,size_t len);
+char *z85_encode(byte *src, size_t len);
 byte *z85_decode(char *src);
+
+neural_function_t derivative[5] = {dsigmoid, drelu, dtanh_neural, did};
 
 int main()
 {
     MultiLayerPerceptron net;
-    int layer_dims[4]={8,16,16,8};
-    int activation_funcs[4]={LINEAR,RELU,TANH,SIGMOID};
-    setup(&net,4,layer_dims,activation_funcs);
+    int layer_dims[5] = {8, 64, 32, 64, 8};
+    int activation_funcs[5] = {LINEAR, SIGMOID, SIGMOID, RELU, RELU};
+    setup(&net, 4, layer_dims, activation_funcs);
     initialize_weights(&net);
-
-    int n_tests,n_trains;
-    scanf("%d%d",&n_tests,&n_trains);
-    float** test_X=malloc(n_tests*sizeof(float*));
-    float** train_X=malloc(n_trains*sizeof(float*));
-    float** train_Y=malloc(n_trains*sizeof(float*));
-
-    char x[9];
-    char y[9];
-    for(int i=0;i<n_tests;++i){
-        scanf("%s",x);
-        test_X[i]=(float*)malloc(net.layer_dims[0]*sizeof(float));
-        for(int j=0;j<8;j++){
-            test_X[i][j]=(float)(x[j]-'0');
-        }
-    }
-
-    for(int i=0;i<n_trains;++i){
-        scanf("%s%s",x,y);
-        train_X[i]=malloc(net.layer_dims[0]*sizeof(float));
-        train_Y[i]=malloc(net.layer_dims[net.n_layers-1]*sizeof(float));
-        for(int j=0;j<8;j++){
-            train_X[i][j]=(float)(x[j]-'0');
-            train_Y[i][j]=(float)(y[j]-'0');
-        }
-    }
-    for(int i=0;i<300;++i){
-        for(int j=0;j<n_trains;j++){
-            backward(&net,train_X[j],train_Y[j],1);
-            gradient_step(&net);
-        }
-    }
-    for(int j=0;j<n_tests;j++){
-        predict(&net,test_X[j]);
-    }
+    save_to_file(&net, "a");
+    load_from_file(&net, "a");
+    save_to_file(&net, "b");
     cleanup(&net);
-
-    for(int i=0;i<n_tests;++i)free(test_X[i]);
-    free(test_X);
-    for(int i=0;i<n_trains;++i)free(train_X[i]),free(train_Y[i]);
-    free(train_X),free(train_Y);
     return 0;
 }
 
@@ -161,7 +123,7 @@ float randf(float min, float max)
 {
     return min + (max - min) * (((float)lcg()) / 0x7fffffff);
 }
-float sigmoid(Neuron* unit)
+float sigmoid(Neuron *unit)
 {
     if (unit->weighted_input_value > 0)
     {
@@ -173,45 +135,62 @@ float sigmoid(Neuron* unit)
         return s / (1 + s);
     }
 }
-float dsigmoid(Neuron *unit){
-    return (unit->activation_value)*(1-unit->activation_value);
+float dsigmoid(Neuron *unit)
+{
+    return (unit->activation_value) * (1 - unit->activation_value);
 }
 
-float relu(Neuron* unit){
-    return (unit->weighted_input_value>0)?unit->weighted_input_value:0.0;
+float relu(Neuron *unit)
+{
+    return (unit->weighted_input_value > 0) ? unit->weighted_input_value : 0.0;
 }
-float drelu(Neuron* unit){
-    return (float)(unit->weighted_input_value>0);
+float drelu(Neuron *unit)
+{
+    return (float)(unit->weighted_input_value > 0);
 }
 
-float tanh_neural(Neuron* unit){
+float tanh_neural(Neuron *unit)
+{
     return tanhf(unit->weighted_input_value);
 }
-float dtanh_neural(Neuron* unit){
-    return 1-(unit->activation_value)*(unit->activation_value);
+float dtanh_neural(Neuron *unit)
+{
+    return 1 - (unit->activation_value) * (unit->activation_value);
 }
-float id(Neuron* unit){
+float id(Neuron *unit)
+{
     return unit->weighted_input_value;
 }
-float did(Neuron* unit){
+float did(Neuron *unit)
+{
     return 1.0;
 }
-
-void setup(MultiLayerPerceptron *net, int n_layers, int *layer_dimensions, int* activation_types)
+float lk_relu(Neuron *unit)
 {
-    neural_function_t activation_functions[4]={&sigmoid,&relu,&tanh_neural,&id};
+    return (unit->weighted_input_value) * (0.01 + 0.99 * (unit->weighted_input_value > 0));
+}
+float dlk_relu(Neuron *unit)
+{
+    return 0.01 + 0.99 * (unit->weighted_input_value > 0);
+}
+
+void setup(MultiLayerPerceptron *net, int n_layers, int *layer_dimensions, int *activation_types)
+{
+    neural_function_t activation_functions[5] = {sigmoid, relu, tanh_neural, id, lk_relu};
+    neural_function_t derivatives[5] = {dsigmoid, drelu, dtanh_neural, did, dlk_relu};
 
     net->n_layers = n_layers;
     net->layers = (Layer *)malloc(net->n_layers * sizeof(Layer));
     net->layer_dims = (int *)malloc((net->n_layers) * sizeof(int));
-    net->activation_types=(int*)malloc((net->n_layers)*sizeof(int));
+    net->activation_types = (int *)malloc((net->n_layers) * sizeof(int));
 
     for (int i = 0; i <= net->n_layers; ++i)
     {
         net->layer_dims[i] = layer_dimensions[i];
     }
-    for(int i=0;i<net->n_layers;++i){
-        net->activation_types[i]=activation_types[i];
+    for (int i = 0; i < net->n_layers; ++i)
+    {
+        net->activation_types[i] = activation_types[i];
     }
 
     for (int i = 0; i < net->n_layers; ++i)
@@ -232,7 +211,8 @@ void setup(MultiLayerPerceptron *net, int n_layers, int *layer_dimensions, int* 
             net->layers[i].bias = (float *)malloc(net->layer_dims[i] * sizeof(float));
             net->layers[i].bias_grad = (float *)malloc(net->layer_dims[i] * sizeof(float));
         }
-        net->layers[i].activation=activation_functions[net->activation_types[i]];
+        net->layers[i].activation = activation_functions[net->activation_types[i]];
+        net->layers[i].dactivation = derivatives[net->activation_types[i]];
         if (i < net->n_layers - 1)
             net->layers[i].next = net->layers + i + 1;
     }
@@ -283,7 +263,7 @@ void forward(MultiLayerPerceptron *net, float *input)
     for (int k = 0; k < net->layer_dims[0]; k++)
     {
         net->layers[0].units[k].weighted_input_value = input[k];
-        net->layers[0].units[k].activation_value=(net->layers[0].activation)(&(net->layers[0].units[k]));
+        net->layers[0].units[k].activation_value = (*(net->layers[0].activation))(&(net->layers[0].units[k]));
     }
     for (int i = 1; i < net->n_layers; ++i)
     {
@@ -295,7 +275,7 @@ void forward(MultiLayerPerceptron *net, float *input)
                 net->layers[i].units[k].weighted_input_value += (net->layers[i].weights[j][k]) * (net->layers[i - 1].units[j].activation_value);
             }
             net->layers[i].units[k].weighted_input_value += net->layers[i].bias[k];
-            net->layers[i].units[k].activation_value = (net->layers[i].activation)(&(net->layers[i].units[k]));
+            net->layers[i].units[k].activation_value = (*(net->layers[i].activation))(&(net->layers[i].units[k]));
         }
     }
 }
@@ -306,7 +286,7 @@ void backward(MultiLayerPerceptron *net, float *input, float *output, bool recom
         forward(net, input);
     for (int k = 0; k < net->layer_dims[net->n_layers - 1]; ++k)
     {
-        net->layers[net->n_layers - 1].units[k].delta = activation_derivative(net->layers[net->n_layers-1].activation)(&(net->layers[net->n_layers-1].units[k])) * (net->layers[net->n_layers-1].units[k].activation_value - output[k]);
+        net->layers[net->n_layers - 1].units[k].delta = (*(net->layers[net->n_layers - 1].dactivation))(&(net->layers[net->n_layers - 1].units[k])) * (net->layers[net->n_layers - 1].units[k].activation_value - output[k]);
     }
 
     for (int i = net->n_layers - 2; i > 0; i--)
@@ -318,7 +298,7 @@ void backward(MultiLayerPerceptron *net, float *input, float *output, bool recom
             {
                 _delta += (net->layers[i + 1].units[k].delta) * (net->layers[i + 1].weights[j][k]);
             }
-            _delta *= activation_derivative(net->layers[i].activation)(&(net->layers[i].units[j]));
+            _delta *= (*(net->layers[i].dactivation))(&(net->layers[i].units[j]));
             net->layers[i].units[j].delta = _delta;
         }
     }
@@ -370,20 +350,22 @@ void predict(MultiLayerPerceptron *net, float *input)
 
 void save_to_file(MultiLayerPerceptron *net, char *filename)
 {
-    char* encoded_data=write_to_z85(net);
+    char *encoded_data = write_to_z85(net);
     FILE *fp = fopen(filename, "w");
     fwrite(encoded_data, 1, strlen(encoded_data), fp);
     fclose(fp);
     free(encoded_data);
 }
 
-char* write_to_z85(MultiLayerPerceptron *net){
+char *write_to_z85(MultiLayerPerceptron *net)
+{
     size_t n_bytes = 0;
     n_bytes += sizeof net->n_layers;
     for (int i = 0; i < net->n_layers; ++i)
         n_bytes += sizeof net->layer_dims[i];
 
-    for(int i=0;i<net->n_layers;++i)n_bytes+=sizeof net->activation_types[i];
+    for (int i = 0; i < net->n_layers; ++i)
+        n_bytes += sizeof net->activation_types[i];
 
     for (int i = 1; i < net->n_layers; ++i)
     {
@@ -430,7 +412,7 @@ char* write_to_z85(MultiLayerPerceptron *net){
 
     return encoded_data;
 }
-void load_from_z85(MultiLayerPerceptron *net, char *z85_string)
+void read_from_z85(MultiLayerPerceptron *net, char *z85_string)
 {
     byte *decoded_data = z85_decode(z85_string);
     byte *read_ptr = decoded_data;
@@ -438,17 +420,18 @@ void load_from_z85(MultiLayerPerceptron *net, char *z85_string)
     memcpy(&num_layers, read_ptr, sizeof(int));
     read_ptr += sizeof(int);
     int *layer_dimensions = (int *)malloc(num_layers * sizeof(int));
-    int *activation_types=(int*)malloc(num_layers*sizeof(int));
+    int *activation_types = (int *)malloc(num_layers * sizeof(int));
     for (int i = 0; i < num_layers; ++i)
     {
         memcpy(layer_dimensions + i, read_ptr, sizeof(int));
         read_ptr += sizeof(int);
     }
-    for(int i=0;i<num_layers;++i){
-        memcpy(activation_types+i,read_ptr,sizeof(int));
-        read_ptr+=sizeof(int);
+    for (int i = 0; i < num_layers; ++i)
+    {
+        memcpy(activation_types + i, read_ptr, sizeof(int));
+        read_ptr += sizeof(int);
     }
-    setup(net, num_layers, layer_dimensions,activation_types);
+    setup(net, num_layers, layer_dimensions, activation_types);
 
     for (int i = 1; i < net->n_layers; ++i)
     {
@@ -474,10 +457,11 @@ void load_from_file(MultiLayerPerceptron *net, char *filename)
     FILE *fp = fopen(filename, "r");
     fseek(fp, 0, SEEK_END);
     size_t len = ftell(fp);
-    char *encoded_data = (char *)malloc(len * sizeof(char));
+    char *encoded_data = (char *)malloc((len+1) * sizeof(char));
+    fseek(fp,0,SEEK_SET);
     fread(encoded_data, sizeof(char), len, fp);
-
-    load_from_z85(net, encoded_data);
+    encoded_data[len]=0;
+    read_from_z85(net, encoded_data);
     free(encoded_data);
     fclose(fp);
 }
@@ -497,10 +481,12 @@ char *z85_encode(byte *data, size_t len)
     uint pow;
     while (byte_idx < len)
     {
-        for(int i=0;i<4;++i)val=val * 256 + data[byte_idx++];
-        pow=52200625;
-        for(int i=0;i<5;i++)encoded_data[char_idx++]=z85_charset[val/pow%85],pow/=85;
-        val=0;
+        for (int i = 0; i < 4; ++i)
+            val = val * 256 + data[byte_idx++];
+        pow = 52200625;
+        for (int i = 0; i < 5; i++)
+            encoded_data[char_idx++] = z85_charset[val / pow % 85], pow /= 85;
+        val = 0;
     }
     assert(char_idx == num_chars);
     encoded_data[char_idx] = 0;
@@ -526,17 +512,13 @@ byte *z85_decode(char *encoded_data)
 
     while (char_idx < strlen(encoded_data))
     {
-        for(int i=0;i<5;++i)val= val * 85 + z85_decoding_table[(byte)encoded_data[char_idx++]-33];
-        pow=16777216;
-        for(int i=0;i<4;++i)data[byte_idx++]=val/pow%256,pow/=256;
-        val=0;
+        for (int i = 0; i < 5; ++i)
+            val = val * 85 + z85_decoding_table[(byte)encoded_data[char_idx++] - 33];
+        pow = 16777216;
+        for (int i = 0; i < 4; ++i)
+            data[byte_idx++] = val / pow % 256, pow /= 256;
+        val = 0;
     }
     assert(byte_idx == num_bytes);
     return data;
-}
-
-neural_function_t activation_derivative(neural_function_t function){
-    if(function==&relu)return &drelu;
-    if(function==&sigmoid)return &dsigmoid;
-    if(function==&tanh_neural)return &dtanh_neural;
 }
