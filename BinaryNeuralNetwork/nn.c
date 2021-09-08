@@ -43,6 +43,7 @@ real sigmoid(real l);
 
 void setup(MultiLayerPerceptron* net,int n_layers,int* layer_dimensions);
 void init_from_b85(MultiLayerPerceptron* net,char* b85_data);
+void save_to_b85(MultiLayerPerceptron* net,char* filename);
 void initialize_weights(MultiLayerPerceptron* net);
 
 void forward(MultiLayerPerceptron* net,real *input);
@@ -261,5 +262,56 @@ void predict(MultiLayerPerceptron* net,char *input)
 }
 
 void init_from_b85(MultiLayerPerceptron* net,char* b85_data){
-    //decode b85 string into byte array and parse network topology and weights
+
+}
+
+void save_to_b85(MultiLayerPerceptron* net, char* filename){
+    FILE* fp=fopen(filename,"w");
+
+    int n_topology_bytes=net->n_layers;
+    for(int i=0;i<net->n_layers;++i){
+        n_topology_bytes+=net->layer_dims[i];
+    }
+    n_topology_bytes*=sizeof(int);
+
+    int n_parameter_bytes=0;
+    for(int i=1;i<net->n_layers;++i){
+        n_parameter_bytes+=net->layer_dims[i]*(1+net->layer_dims[i-1])//weight matrix + bias vector
+    }
+    n_parameter_bytes*=sizeof(real);
+    n_encoded_bytes=(int)(1.2*(n_parameter_bytes+n_topology_bytes))+1;//base85 encodes 4 binary bytes into 5 ascii bytes
+
+    char* raw_byte_buffer=(char*)malloc(n_topology_bytes+n_parameter_bytes);
+    char* encoded_buffer=(char*)malloc(n_encoded_bytes);
+
+    char* reading_ptr=raw_byte_buffer;
+    char* writing_ptr=encoded_buffer;
+
+    memcpy(reading_ptr,&(net->n_layers),sizeof(int));
+    reading_ptr+=sizeof(int);
+
+    for(int i=0;i<net->n_layers;++i){
+        memcpy(reading_ptr,&(net->layer_dims[i]),sizeof(int));
+        writing_ptr+=sizeof(int);
+    }
+
+    for(int i=1;i<net->n_layers;++i){
+        for(int k=0;k<net->layer_dims[i];k++){
+            for(int j=0;j<net->layer_dims[i-1];j++){
+                memcpy(reading_ptr,&(net->layers[i].weights[j][k]),sizeof(real));
+                reading_ptr+=sizeof(real);
+            }
+            for(int k=0;k<net->layer_dims[i];k++){
+                memcpy(reading_ptr,&(net->n_layers),sizeof(real));
+                reading_ptr+=sizeof(real);
+            }
+        }
+    }
+
+    
+
+    fwrite(encoded_buffer,1,writing_ptr-encoded_buffer,fp);
+    free(raw_byte_buffer);
+    free(encoded_buffer);
+    fclose(fp);
 }
