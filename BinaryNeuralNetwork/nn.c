@@ -3,7 +3,6 @@
 #include <string.h>
 #include <stdbool.h>
 #include <math.h>
-#include <assert.h>
 
 #define errlog(args...) fprintf(stderr, args)
 
@@ -314,7 +313,6 @@ void save_to_z85(MultiLayerPerceptron *net, char *filename)
             copy_ptr += sizeof net->layers[i].bias[k];
         }
     }
-    assert(copy_ptr == data + n_bytes);
     char *encoded_data = z85_encode(data, n_bytes);
 
     FILE *fp = fopen(filename, "w");
@@ -352,7 +350,6 @@ void load_from_z85(MultiLayerPerceptron *net, char *z85_string)
             read_ptr += sizeof(float);
         }
     }
-    assert(read_ptr - decoded_data == strlen(z85_string) * 4 / 5);
     free(layer_dimensions);
     free(decoded_data);
 }
@@ -372,11 +369,6 @@ void load_from_file(MultiLayerPerceptron *net, char *filename)
 
 char *z85_encode(byte *data, size_t len)
 {
-    if (len % 4)
-    {
-        errlog("Error in Z85 encoding: data length is not a multiple of 4.\n");
-        return NULL;
-    }
     size_t num_chars = len * 5 / 4;
     char *encoded_data = (char *)malloc(num_chars + 1);
     uint char_idx = 0;
@@ -390,7 +382,6 @@ char *z85_encode(byte *data, size_t len)
         for(int i=0;i<5;i++)encoded_data[char_idx++]=z85_charset[val/pow%85],pow/=85;
         val=0;
     }
-    assert(char_idx == num_chars);
     encoded_data[char_idx] = 0;
 
     return encoded_data;
@@ -398,12 +389,6 @@ char *z85_encode(byte *data, size_t len)
 
 byte *z85_decode(char *encoded_data)
 {
-    if (strlen(encoded_data) % 5)
-    {
-        printf("Error in Z85 decoding: encoded string length is not a multiple of 5.\n");
-        return NULL;
-    }
-
     size_t num_bytes = strlen(encoded_data) * 4 / 5;
     byte *data = (byte *)malloc(num_bytes);
 
@@ -419,6 +404,5 @@ byte *z85_decode(char *encoded_data)
         for(int i=0;i<4;++i)data[byte_idx++]=val/pow%256,pow/=256;
         val=0;
     }
-    assert(byte_idx == num_bytes);
     return data;
 }
