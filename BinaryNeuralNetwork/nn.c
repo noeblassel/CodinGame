@@ -3,15 +3,39 @@
 #include <string.h>
 #include <stdbool.h>
 #include <math.h>
+#include <assert.h>
 
-#define log(args...) fprintf(stderr, args)
+//COPYRIGHT NOTICE FOR Z85 implementation
+//  --------------------------------------------------------------------------
+//  Copyright (c) 2010-2013 iMatix Corporation and Contributors
+//  
+//  Permission is hereby granted, free of charge, to any person obtaining a 
+//  copy of this software and associated documentation files (the "Software"),
+//  to deal in the Software without restriction, including without limitation 
+//  the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+//  and/or sell copies of the Software, and to permit persons to whom the 
+//  Software is furnished to do so, subject to the following conditions:
+//  
+//  The above copyright notice and this permission notice shall be included in 
+//  all copies or substantial portions of the Software.
+//  
+//  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+//  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+//  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL 
+//  THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+//  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
+//  DEALINGS IN THE SOFTWARE.
+//  --------------------------------------------------------------------------
 
-typedef double real;
+#define errlog(args...) fprintf(stderr, args)
+
+typedef unsigned char byte;
 
 typedef struct neuron_t
 {
-    real activation;
-    real delta;
+    float activation;
+    float delta;
 } Neuron;
 
 typedef struct layer_t
@@ -21,11 +45,11 @@ typedef struct layer_t
     struct layer_t *next;
     Neuron *units;
 
-    real **weights;
-    real *bias;
+    float **weights;
+    float *bias;
 
-    real **weights_grad;
-    real *bias_grad;
+    float **weights_grad;
+    float *bias_grad;
 } Layer;
 
 typedef struct mlp_t
@@ -35,44 +59,57 @@ typedef struct mlp_t
     Layer *layers;
 } MultiLayerPerceptron;
 
-real eta = .5;
+float eta = .5;
 long r_state = 1103527590;
+static char z85_charset[86] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
+static byte z85_decoding_table[96] = { //z85_charset has ascii codes between 33 and 125, so we offset chars by 32, and only map bytes up to 128
+    0x00, 0x44, 0x00, 0x54, 0x53, 0x52, 0x48, 0x00,
+    0x4B, 0x4C, 0x46, 0x41, 0x00, 0x3F, 0x3E, 0x45,
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x40, 0x00, 0x49, 0x42, 0x4A, 0x47,
+    0x51, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A,
+    0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32,
+    0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A,
+    0x3B, 0x3C, 0x3D, 0x4D, 0x00, 0x4E, 0x43, 0x00,
+    0x00, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+    0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+    0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20,
+    0x21, 0x22, 0x23, 0x4F, 0x00, 0x50, 0x00, 0x00};
+
 long lcg();
-real randf(real min, real max);
-real sigmoid(real l);
+float randf(float min, float max);
+float sigmoid(float l);
 
-void setup(MultiLayerPerceptron* net,int n_layers,int* layer_dimensions);
-void init_from_b85(MultiLayerPerceptron* net,char* b85_data);
-void save_to_b85(MultiLayerPerceptron* net,char* filename);
-void initialize_weights(MultiLayerPerceptron* net);
+void setup(MultiLayerPerceptron *net, int n_layers, int *layer_dimensions);
+void initialize_weights(MultiLayerPerceptron *net);
 
-void forward(MultiLayerPerceptron* net,real *input);
-void backward(MultiLayerPerceptron* net,real *input, real *output, bool recompute_activations);
+void forward(MultiLayerPerceptron *net, float *input);
+void backward(MultiLayerPerceptron *net, float *input, float *output, bool recompute_activations);
 
-void gradient_step(MultiLayerPerceptron* net);
-void predict(MultiLayerPerceptron* net,real *input);
-void cleanup(MultiLayerPerceptron* net);
+void gradient_step(MultiLayerPerceptron *net);
+void predict(MultiLayerPerceptron *net, float *input);
+
+void save_to_z85(MultiLayerPerceptron *net, char *filename);
+void load_from_z85(MultiLayerPerceptron *net, char *z85_string);
+void load_from_file(MultiLayerPerceptron *net, char *filename);
+
+void cleanup(MultiLayerPerceptron *net);
+char *z85_encode(byte *src,size_t len);
+byte *z85_decode(char *src);
 
 int main()
 {
-
-    setup();
-    initialize_weights();
-    forward(test_inputs[1]);
-
-    for (int i = 0; i < n_epochs; ++i)
-    {
-        for (int j = 0; j < n_training_pairs; ++j)
-        {
-            backward(training_pairs[j][0], training_pairs[j][1], true);
-            gradient_step();
-        }
-    }
-    for (int i = 0; i < n_test_inputs; i++)
-    {
-        predict(test_inputs[i]);
-    }
-    cleanup();
+    MultiLayerPerceptron net;
+    int n_layers=4;
+    int layer_dims[4]={8,16,16,8};
+    setup(&net,n_layers,layer_dims);
+    initialize_weights(&net);
+    save_to_z85(&net,"a");
+    MultiLayerPerceptron net2;
+    load_from_file(&net2,"a");
+    save_to_z85(&net2,"b");
+    cleanup(&net);
+    cleanup(&net2);
     return 0;
 }
 
@@ -81,23 +118,23 @@ long lcg()
     r_state = (0x41c64e6d * r_state + 0x3039) % 0x80000000;
     return r_state;
 }
-real randf(real min, real max)
+float randf(float min, float max)
 {
-    return min + (max - min) * (((real)lcg()) / 0x7fffffff);
+    return min + (max - min) * (((float)lcg()) / 0x7fffffff);
 }
-real sigmoid(real x)
+float sigmoid(float x)
 {
     if (x > 0)
     {
-        return 1. / (1 + (real)exp(-x));
+        return 1. / (1 + (float)exp(-x));
     }
     else
     {
-        real s = (real)exp(x);
+        float s = (float)exp(x);
         return s / (1 + s);
     }
 }
-void setup(MultiLayerPerceptron* net,int n_layers,int* layer_dimensions)
+void setup(MultiLayerPerceptron *net, int n_layers, int *layer_dimensions)
 {
     net->n_layers = n_layers;
     net->layers = (Layer *)malloc(net->n_layers * sizeof(Layer));
@@ -105,9 +142,8 @@ void setup(MultiLayerPerceptron* net,int n_layers,int* layer_dimensions)
 
     for (int i = 0; i <= net->n_layers; ++i)
     {
-        net->layer_dims[i]=layer_dimensions[i];
+        net->layer_dims[i] = layer_dimensions[i];
     }
-
 
     for (int i = 0; i < net->n_layers; ++i)
     {
@@ -115,24 +151,24 @@ void setup(MultiLayerPerceptron* net,int n_layers,int* layer_dimensions)
         if (i > 0)
         {
             net->layers[i].prev = net->layers + i - 1;
-            net->layers[i].weights = (real **)malloc(net->layer_dims[i - 1] * sizeof(real *));
-            net->layers[i].weights_grad = (real **)malloc(net->layer_dims[i - 1] * sizeof(real *));
+            net->layers[i].weights = (float **)malloc(net->layer_dims[i - 1] * sizeof(float *));
+            net->layers[i].weights_grad = (float **)malloc(net->layer_dims[i - 1] * sizeof(float *));
 
             for (int j = 0; j < net->layer_dims[i - 1]; j++)
             {
-                net->layers[i].weights[j] = (real *)malloc(net->layer_dims[i] * sizeof(real));
-                net->layers[i].weights_grad[j] = (real *)malloc(net->layer_dims[i] * sizeof(real));
+                net->layers[i].weights[j] = (float *)malloc(net->layer_dims[i] * sizeof(float));
+                net->layers[i].weights_grad[j] = (float *)malloc(net->layer_dims[i] * sizeof(float));
             }
 
-            net->layers[i].bias = (real *)malloc(net->layer_dims[i] * sizeof(real));
-            net->layers[i].bias_grad = (real *)malloc(net->layer_dims[i] * sizeof(real));
+            net->layers[i].bias = (float *)malloc(net->layer_dims[i] * sizeof(float));
+            net->layers[i].bias_grad = (float *)malloc(net->layer_dims[i] * sizeof(float));
         }
         if (i < net->n_layers - 1)
             net->layers[i].next = net->layers + i + 1;
     }
 }
 
-void cleanup(MultiLayerPerceptron* net)
+void cleanup(MultiLayerPerceptron *net)
 {
     for (int i = 1; i < net->n_layers; ++i)
     {
@@ -154,11 +190,11 @@ void cleanup(MultiLayerPerceptron* net)
     free(net->layers);
 }
 
-void initialize_weights(MultiLayerPerceptron* net)
+void initialize_weights(MultiLayerPerceptron *net)
 {
     for (int i = 1; i < net->n_layers; ++i)
     {
-        real alpha = (real)sqrt(3. / ((real)net->layer_dims[i - 1]));
+        float alpha = (float)sqrt(3. / ((float)net->layer_dims[i - 1]));
         for (int k = 0; k < net->layer_dims[i]; k++)
         {
             for (int j = 0; j < net->layer_dims[i - 1]; j++)
@@ -170,7 +206,7 @@ void initialize_weights(MultiLayerPerceptron* net)
     }
 }
 
-void forward(MultiLayerPerceptron* net,real* input)
+void forward(MultiLayerPerceptron *net, float *input)
 {
     for (int k = 0; k < net->layer_dims[0]; k++)
     {
@@ -180,7 +216,7 @@ void forward(MultiLayerPerceptron* net,real* input)
     {
         for (int k = 0; k < net->layer_dims[i]; k++)
         {
-            real l = 0;
+            float l = 0;
             for (int j = 0; j < net->layer_dims[i - 1]; j++)
             {
                 l += (net->layers[i].weights[j][k]) * (net->layers[i - 1].units[j].activation);
@@ -191,13 +227,13 @@ void forward(MultiLayerPerceptron* net,real* input)
     }
 }
 
-void backward(MultiLayerPerceptron* net, real *input, real *output, bool recompute_activations)
+void backward(MultiLayerPerceptron *net, float *input, float *output, bool recompute_activations)
 {
     if (recompute_activations)
-        forward(net,input);
+        forward(net, input);
     for (int k = 0; k < net->layer_dims[net->n_layers - 1]; ++k)
     {
-        real h = net->layers[net.n_layers - 1].units[k].activation;
+        float h = net->layers[net->n_layers - 1].units[k].activation;
         net->layers[net->n_layers - 1].units[k].delta = h * (1 - h) * (h - output[k]);
     }
 
@@ -205,12 +241,12 @@ void backward(MultiLayerPerceptron* net, real *input, real *output, bool recompu
     {
         for (int j = 0; j < net->layer_dims[i]; j++)
         {
-            real _delta = 0;
+            float _delta = 0;
             for (int k = 0; k < net->layer_dims[i + 1]; k++)
             {
                 _delta += (net->layers[i + 1].units[k].delta) * (net->layers[i + 1].weights[j][k]);
             }
-            real h = net->layers[i].units[j].activation;
+            float h = net->layers[i].units[j].activation;
             _delta *= (h) * (1 - h);
             net->layers[i].units[j].delta = _delta;
         }
@@ -233,7 +269,7 @@ void backward(MultiLayerPerceptron* net, real *input, real *output, bool recompu
     }
 }
 
-void gradient_step(MultiLayerPerceptron* net)
+void gradient_step(MultiLayerPerceptron *net)
 {
     for (int i = 1; i < net->n_layers; i++)
     {
@@ -251,9 +287,9 @@ void gradient_step(MultiLayerPerceptron* net)
     }
 }
 
-void predict(MultiLayerPerceptron* net,char *input)
+void predict(MultiLayerPerceptron *net, float *input)
 {
-    forward(input);
+    forward(net, input);
     for (int i = 0; i < net->layer_dims[net->n_layers - 1]; ++i)
     {
         printf("%d", (net->layers[net->n_layers - 1].units[i].activation > .5) ? 1 : 0);
@@ -261,57 +297,166 @@ void predict(MultiLayerPerceptron* net,char *input)
     printf("\n");
 }
 
-void init_from_b85(MultiLayerPerceptron* net,char* b85_data){
-
-}
-
-void save_to_b85(MultiLayerPerceptron* net, char* filename){
-    FILE* fp=fopen(filename,"w");
-
-    int n_topology_bytes=net->n_layers;
-    for(int i=0;i<net->n_layers;++i){
-        n_topology_bytes+=net->layer_dims[i];
-    }
-    n_topology_bytes*=sizeof(int);
-
-    int n_parameter_bytes=0;
-    for(int i=1;i<net->n_layers;++i){
-        n_parameter_bytes+=net->layer_dims[i]*(1+net->layer_dims[i-1])//weight matrix + bias vector
-    }
-    n_parameter_bytes*=sizeof(real);
-    n_encoded_bytes=(int)(1.2*(n_parameter_bytes+n_topology_bytes))+1;//base85 encodes 4 binary bytes into 5 ascii bytes
-
-    char* raw_byte_buffer=(char*)malloc(n_topology_bytes+n_parameter_bytes);
-    char* encoded_buffer=(char*)malloc(n_encoded_bytes);
-
-    char* reading_ptr=raw_byte_buffer;
-    char* writing_ptr=encoded_buffer;
-
-    memcpy(reading_ptr,&(net->n_layers),sizeof(int));
-    reading_ptr+=sizeof(int);
-
-    for(int i=0;i<net->n_layers;++i){
-        memcpy(reading_ptr,&(net->layer_dims[i]),sizeof(int));
-        writing_ptr+=sizeof(int);
-    }
-
-    for(int i=1;i<net->n_layers;++i){
-        for(int k=0;k<net->layer_dims[i];k++){
-            for(int j=0;j<net->layer_dims[i-1];j++){
-                memcpy(reading_ptr,&(net->layers[i].weights[j][k]),sizeof(real));
-                reading_ptr+=sizeof(real);
-            }
-            for(int k=0;k<net->layer_dims[i];k++){
-                memcpy(reading_ptr,&(net->n_layers),sizeof(real));
-                reading_ptr+=sizeof(real);
-            }
+void save_to_z85(MultiLayerPerceptron *net, char *filename)
+{
+    size_t n_bytes = 0;
+    n_bytes += sizeof net->n_layers;
+    for (int i = 0; i < net->n_layers; ++i)
+        n_bytes += sizeof net->layer_dims[i];
+    for (int i = 1; i < net->n_layers; ++i)
+    {
+        for (int k = 0; k < net->layer_dims[i]; ++k)
+        {
+            for (int j = 0; j < net->layer_dims[i - 1]; ++j)
+                n_bytes += sizeof net->layers[i].weights[j][k];
+            n_bytes += sizeof net->layers[i].bias[k];
         }
     }
 
-    
+    byte *data = malloc(n_bytes);
+    byte *copy_ptr = data;
 
-    fwrite(encoded_buffer,1,writing_ptr-encoded_buffer,fp);
-    free(raw_byte_buffer);
-    free(encoded_buffer);
+    memcpy(copy_ptr, &(net->n_layers), sizeof net->n_layers);
+    copy_ptr += sizeof net->n_layers;
+
+    for (int i = 0; i < net->n_layers; ++i)
+    {
+        memcpy(copy_ptr, &(net->layer_dims[i]), sizeof net->layer_dims[i]);
+        copy_ptr += sizeof net->layer_dims[i];
+    }
+    for (int i = 1; i < net->n_layers; ++i)
+    {
+        for (int k = 0; k < net->layer_dims[i]; ++k)
+        {
+            for (int j = 0; j < net->layer_dims[i - 1]; ++j)
+            {
+                memcpy(copy_ptr, &(net->layers[i].weights[j][k]), sizeof net->layers[i].weights[j][k]);
+                copy_ptr += sizeof net->layers[i].weights[j][k];
+            }
+            memcpy(copy_ptr, &(net->layers[i].bias[k]), sizeof net->layers[i].bias[k]);
+            copy_ptr += sizeof net->layers[i].bias[k];
+        }
+    }
+    assert(copy_ptr == data + n_bytes);
+    char *encoded_data = z85_encode(data, n_bytes);
+
+    FILE *fp = fopen(filename, "w");
+    fwrite(encoded_data, 1, strlen(encoded_data), fp);
     fclose(fp);
+    free(data);
+    free(encoded_data);
+}
+
+void load_from_z85(MultiLayerPerceptron *net, char *z85_string)
+{
+    byte *decoded_data = z85_decode(z85_string);
+    byte *read_ptr = decoded_data;
+    int num_layers;
+    memcpy(&num_layers, read_ptr, sizeof(int));
+    read_ptr += sizeof(int);
+    int *layer_dimensions = (int *)malloc(num_layers * sizeof(int));
+    for (int i = 0; i < num_layers; ++i)
+    {
+        memcpy(layer_dimensions + i, read_ptr, sizeof(int));
+        read_ptr += sizeof(int);
+    }
+    setup(net, num_layers, layer_dimensions);
+
+    for (int i = 1; i < net->n_layers; ++i)
+    {
+        for (int k = 0; k < net->layer_dims[i]; ++k)
+        {
+            for (int j = 0; j < net->layer_dims[i - 1]; ++j)
+            {
+                memcpy(&(net->layers[i].weights[j][k]), read_ptr, sizeof(float));
+                read_ptr += sizeof(float);
+            }
+            memcpy(&(net->layers[i].bias[k]), read_ptr, sizeof(float));
+            read_ptr += sizeof(float);
+        }
+    }
+    assert(read_ptr - decoded_data == strlen(z85_string) * 4 / 5);
+    free(layer_dimensions);
+    free(decoded_data);
+}
+
+void load_from_file(MultiLayerPerceptron *net, char *filename)
+{
+    FILE *fp = fopen(filename, "r");
+    fseek(fp, 0, SEEK_END);
+    size_t len = ftell(fp);
+    char *encoded_data = (char *)malloc(len * sizeof(char));
+    fread(encoded_data, sizeof(char), len, fp);
+
+    load_from_z85(net, encoded_data);
+    free(encoded_data);
+    fclose(fp);
+}
+
+char *z85_encode(byte *data, size_t len)
+{
+    if (len % 4)
+    {
+        errlog("Error in Z85 encoding: data length is not a multiple of 4.\n");
+        return NULL;
+    }
+    size_t num_chars = len * 5 / 4;
+    char *encoded_data = (char *)malloc(num_chars + 1);
+    uint char_idx = 0;
+    uint byte_idx = 0;
+    u_int32_t val = 0;
+
+    while (byte_idx < len)
+    {
+        val = val * 256 + data[byte_idx];
+        byte_idx++;
+        if (byte_idx % 4 == 0)
+        {
+            uint pow = 85 * 85 * 85 * 85;
+            while (pow)
+            {
+                encoded_data[char_idx++] = z85_charset[val / pow % 85];
+                pow /= 85;
+            }
+            val = 0;
+        }
+    }
+    assert(char_idx == num_chars);
+    encoded_data[char_idx] = 0;
+
+    return encoded_data;
+}
+
+byte *z85_decode(char *encoded_data)
+{
+    if (strlen(encoded_data) % 5)
+    {
+        printf("Error in Z85 decoding: encoded string length is not a multiple of 5.\n");
+        return NULL;
+    }
+
+    size_t num_bytes = strlen(encoded_data) * 4 / 5;
+    byte *data = (byte *)malloc(num_bytes);
+
+    uint byte_idx = 0;
+    uint char_idx = 0;
+    u_int32_t val = 0;
+
+    while (char_idx < strlen(encoded_data))
+    {
+        val = val * 85 + z85_decoding_table[(byte)encoded_data[char_idx] - 32];
+        char_idx++;
+        if (char_idx % 5 == 0)
+        {
+            uint pow = 256 * 256 * 256;
+            while (pow)
+            {
+                data[byte_idx++] = val / pow % 256;
+                pow /= 256;
+            }
+            val = 0;
+        }
+    }
+    assert(byte_idx == num_bytes);
+    return data;
 }
