@@ -5,29 +5,6 @@
 #include <math.h>
 #include <assert.h>
 
-//COPYRIGHT NOTICE FOR Z85 implementation
-//  --------------------------------------------------------------------------
-//  Copyright (c) 2010-2013 iMatix Corporation and Contributors
-//  
-//  Permission is hereby granted, free of charge, to any person obtaining a 
-//  copy of this software and associated documentation files (the "Software"),
-//  to deal in the Software without restriction, including without limitation 
-//  the rights to use, copy, modify, merge, publish, distribute, sublicense, 
-//  and/or sell copies of the Software, and to permit persons to whom the 
-//  Software is furnished to do so, subject to the following conditions:
-//  
-//  The above copyright notice and this permission notice shall be included in 
-//  all copies or substantial portions of the Software.
-//  
-//  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-//  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-//  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL 
-//  THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-//  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
-//  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
-//  DEALINGS IN THE SOFTWARE.
-//  --------------------------------------------------------------------------
-
 #define errlog(args...) fprintf(stderr, args)
 
 typedef unsigned char byte;
@@ -62,8 +39,8 @@ typedef struct mlp_t
 float eta = .5;
 long r_state = 1103527590;
 static char z85_charset[86] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
-static byte z85_decoding_table[96] = { //z85_charset has ascii codes between 33 and 125, so we offset chars by 32, and only map bytes up to 128
-    0x00, 0x44, 0x00, 0x54, 0x53, 0x52, 0x48, 0x00,
+static byte z85_decoding_table[93] = { //z85_charset has ascii codes between 33 and 125, so we offset chars by 33, and only map bytes up to 125
+    0x44, 0x00, 0x54, 0x53, 0x52, 0x48, 0x00,
     0x4B, 0x4C, 0x46, 0x41, 0x00, 0x3F, 0x3E, 0x45,
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
     0x08, 0x09, 0x40, 0x00, 0x49, 0x42, 0x4A, 0x47,
@@ -74,7 +51,7 @@ static byte z85_decoding_table[96] = { //z85_charset has ascii codes between 33 
     0x00, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
     0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
     0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20,
-    0x21, 0x22, 0x23, 0x4F, 0x00, 0x50, 0x00, 0x00};
+    0x21, 0x22, 0x23, 0x4F, 0x00, 0x50};
 
 long lcg();
 float randf(float min, float max);
@@ -405,21 +382,13 @@ char *z85_encode(byte *data, size_t len)
     uint char_idx = 0;
     uint byte_idx = 0;
     u_int32_t val = 0;
-
+    uint pow;
     while (byte_idx < len)
     {
-        val = val * 256 + data[byte_idx];
-        byte_idx++;
-        if (byte_idx % 4 == 0)
-        {
-            uint pow = 85 * 85 * 85 * 85;
-            while (pow)
-            {
-                encoded_data[char_idx++] = z85_charset[val / pow % 85];
-                pow /= 85;
-            }
-            val = 0;
-        }
+        for(int i=0;i<4;++i)val=val * 256 + data[byte_idx++];
+        pow=52200625;
+        for(int i=0;i<5;i++)encoded_data[char_idx++]=z85_charset[val/pow%85],pow/=85;
+        val=0;
     }
     assert(char_idx == num_chars);
     encoded_data[char_idx] = 0;
@@ -441,21 +410,14 @@ byte *z85_decode(char *encoded_data)
     uint byte_idx = 0;
     uint char_idx = 0;
     u_int32_t val = 0;
+    uint pow;
 
     while (char_idx < strlen(encoded_data))
     {
-        val = val * 85 + z85_decoding_table[(byte)encoded_data[char_idx] - 32];
-        char_idx++;
-        if (char_idx % 5 == 0)
-        {
-            uint pow = 256 * 256 * 256;
-            while (pow)
-            {
-                data[byte_idx++] = val / pow % 256;
-                pow /= 256;
-            }
-            val = 0;
-        }
+        for(int i=0;i<5;++i)val= val * 85 + z85_decoding_table[(byte)encoded_data[char_idx++]-33];
+        pow=16777216;
+        for(int i=0;i<4;++i)data[byte_idx++]=val/pow%256,pow/=256;
+        val=0;
     }
     assert(byte_idx == num_bytes);
     return data;
