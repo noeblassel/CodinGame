@@ -22,7 +22,7 @@ int main(){
     int b=(w>h)?w:h;
     int c;
 
-    while(a>1){
+    while(a>1){//compute a simple upper bound for the best solution
         best_sol+=1;
         b-=a;
         c=(a<b)?a:b;
