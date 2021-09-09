@@ -8,7 +8,7 @@
 #define errlog(args...) fprintf(stderr, args)
 
 typedef unsigned char byte;
-
+//modifying these values requires updating some arrays in function setup()
 #define SIGMOID 0
 #define RELU 1
 #define TANH 2
@@ -184,14 +184,8 @@ void setup(MultiLayerPerceptron *net, int n_layers, int *layer_dimensions, int *
     net->layer_dims = (int *)malloc((net->n_layers) * sizeof(int));
     net->activation_types = (int *)malloc((net->n_layers) * sizeof(int));
 
-    for (int i = 0; i <= net->n_layers; ++i)
-    {
-        net->layer_dims[i] = layer_dimensions[i];
-    }
-    for (int i = 0; i < net->n_layers; ++i)
-    {
-        net->activation_types[i] = activation_types[i];
-    }
+    memcpy(&(net->layer_dims),layer_dimensions,n_layers*sizeof(int));
+    memcpy(&(net->activation_types),activation_types,n_layers*sizeof(int));
 
     for (int i = 0; i < net->n_layers; ++i)
     {
@@ -215,6 +209,20 @@ void setup(MultiLayerPerceptron *net, int n_layers, int *layer_dimensions, int *
         net->layers[i].dactivation = derivatives[net->activation_types[i]];
         if (i < net->n_layers - 1)
             net->layers[i].next = net->layers + i + 1;
+    }
+}
+
+void copy(MultiLayerPerceptron *net_from,MultiLayerPerceptron *net_to){
+    
+    setup(net_to,net_from->n_layers,net_from->layer_dims,net_from->activation_types);
+    
+    for(int i=1;i<net_from->n_layers;++i){
+        for(int k=0;k<net_from->layer_dims[i];k++){
+            for(int j=0;j<net_from->layer_dims[i-1];j++){
+                net_to->layers[i].weights[j][k]=net_from->layers[i].weights[j][k];
+            }
+            net_to->layers[i].bias[k]=net_from->layers[i].bias[k];
+        }
     }
 }
 
