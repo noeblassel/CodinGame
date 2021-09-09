@@ -1,3 +1,8 @@
+/*
+Solution to Binary Neural Network Part 1: https://www.codingame.com/training/hard/binary-neural-network---part-1
+This implements a simple feed-forward neural network with sigmoid activations, and dynamically specified topology, for the purpose of predicting
+binary outputs from binary inputs, and trained through backpropagation.
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
