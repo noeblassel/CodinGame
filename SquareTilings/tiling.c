@@ -70,9 +70,6 @@ int solve(int w,int h,int*profile,int running_total){
 }
 
 int gcd(int a,int b){
-if(a*b==0)return a+b;
-int c=a<b?a:b;
-b+=a-c;
-a=c;
+if(!(a*b))return a+b;
 return gcd(a,b%a);
 }
