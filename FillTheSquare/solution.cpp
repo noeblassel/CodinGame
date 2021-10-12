@@ -38,7 +38,7 @@ using namespace std;
 typedef vector<vector<bool>> m2mat;//A typedef for a mod 2 matrix
 vector<bool> lin_solve_mod2(m2mat A,vector<bool> b,int N);
 
-/*Every initially lit/non-lit LED must have an even/odd number of lit neighbors in the final state.
+/*Every initially lit/non-lit LED must have an even/odd number of additionally lit (i.e. touched) neighbors in the final state, where a cell counts as its own neighbor.
 The problem can be represented as a linear system mod 2 with N*N unknowns, Ax=b, where A is the adjacency matrix
 describing neighborhood relationships between points on the grid, and b describes the parity requirements for each point on the grid.*/
 
