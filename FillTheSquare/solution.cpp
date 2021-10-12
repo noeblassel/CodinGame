@@ -106,7 +106,8 @@ vector<bool>lin_solve_mod2(m2mat A,vector<bool>b,int N){
             y_pivot++;
         }
     }
-    //matrix is now in row-echelon form, we can now solve by substitution
+    //matrix is now in row-echelon form, we can now solve by substitution--the statement poses as an assumption that the system is solvable
+    //=>No need to worry about free variables
     vector<bool>sol;
     for(int j=0;j<N;j++){
         bool x=b[N-j-1];
@@ -115,6 +116,6 @@ vector<bool>lin_solve_mod2(m2mat A,vector<bool>b,int N){
         }
         sol.push_back(x);
     }
-    reverse(sol.begin(),sol.end());
+    reverse(sol.begin(),sol.end());//We did the substitution from the bottom up
     return sol;
 }
